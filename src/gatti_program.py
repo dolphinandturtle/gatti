@@ -63,6 +63,7 @@ class GattiProgram:
                         pos_rel = (gm.Vec2(*screen.get_size()) - gm.Vec2(*srf.get_size())  * scale_rel) / 2
                         pos_abs = gm.absto(pos_rel, self.board.cam_pos, self.board.cam_scale)
                         self.board.add(self.search.result, srf, pos_abs, scale_abs)
+                        self.board.old_scale = 0
 
                 case GattiState.BOARD:
                     # entering the BOARD state and waiting for termination to read transition
