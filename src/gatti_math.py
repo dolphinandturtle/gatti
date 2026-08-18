@@ -1,40 +1,22 @@
-from dataclasses import dataclass
+import numpy as np
 from math import log10, floor
 
 
 def siground(x, dc):
     return round(x, -int(floor(log10(abs(x)))) + dc)
 
-@dataclass(slots=True, order=True)
-class Vec2:
-    x: float
-    y: float
+def relto(obj: np.array, cam_xy: np.array, cam_z: float):
+    return (obj - cam_xy) * cam_z
 
-    def __mul__(self, s):
-        return Vec2(self.x * s, self.y * s)
+def absto(obj: np.array, cam_xy: np.array, cam_z: float):
+    return (obj / cam_z + cam_xy)
 
-    def __truediv__(self, s):
-        return Vec2(self.x / s, self.y / s)
-
-    def __add__(self, vec):
-        return Vec2(self.x + vec.x, self.y + vec.y)
-
-    def __sub__(self, vec):
-        return Vec2(self.x - vec.x, self.y - vec.y)
-
-
-def relto(obj: Vec2, cam: Vec2, h: float):
-    return (obj - cam) * h
-
-def absto(obj: Vec2, cam: Vec2, h: float):
-    return (obj / h + cam)
-
-def minmax(l: Vec2, m: Vec2, u: Vec2):
-    return Vec2(
-        x=min(max(l.x, m.x), u.x),
-        y=min(max(l.y, m.y), u.y)
+def minmax(l: np.array, m: np.array, u: np.array):
+    return np.array(
+        x=min(max(l[0], m[0]), u[0]),
+        y=min(max(l[1], m[1]), u[1])
     )
 
-def in_box(nw: Vec2, p: Vec2, se: Vec2):
-    return nw.x < p.x < se.x and nw.y < p.y < se.y
+def in_box(nw: np.array, p: np.array, se: np.array):
+    return nw[0] < p[0] < se[0] and nw[1] < p[1] < se[1]
 

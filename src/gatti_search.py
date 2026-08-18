@@ -1,6 +1,8 @@
+import numpy as np
+
 import os
 import pygame as pg
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass
 
 import gatti_math as gm
 import gatti_colors as gc
@@ -90,9 +92,9 @@ class GattiSearch:
 
             # draw search box (active buffer)
             text = os.path.join(self.walk, self.part)
-            pos_box = pos - gm.Vec2(*font.size(text)) / 2
+            pos_box = pos - np.array(font.size(text)) / 2
             srf = font.render(text, antialias=True, color=gc.TEXT)
-            screen.blit(srf, astuple(pos_box))
+            screen.blit(srf, pos_box)
             
             # draw search box (completion hints)
             fade = 255 / 2
@@ -104,9 +106,9 @@ class GattiSearch:
                 srf.set_alpha(fade)
 
                 # blit text in a cascading fashion under the active buffer
-                pos_box = pos - gm.Vec2(*font.size(text)) / 2
-                pos_offset = gm.Vec2(0, font.get_height() * (i+1))
-                screen.blit(srf, astuple(pos_box + pos_offset))
+                pos_box = pos - np.array(font.size(text)) / 2
+                pos_offset = np.array([0, font.get_height() * (i+1)])
+                screen.blit(srf, pos_box + pos_offset)
 
                 fade /= 2
         

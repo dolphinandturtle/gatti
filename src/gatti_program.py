@@ -1,3 +1,4 @@
+import numpy as np
 import pygame as pg
 from dataclasses import dataclass
 
@@ -8,6 +9,8 @@ from gatti_search import GattiSearch
 from gatti_splash  import GattiSplash
 from gatti_state import GattiState
 
+
+GATTI_ID = 0
 
 @dataclass(slots=True)
 class GattiProgram:
@@ -21,12 +24,13 @@ class GattiProgram:
         return cls(GattiState.SPLASH, GattiBoard.empty(), GattiSearch.empty(), GattiSplash.empty())
 
     def run(self, screen):
+        global GATTI_ID
         while True:
             match self.state:
 
                 case GattiState.SPLASH:
                     # entering the SPLASH state and waiting for termination to read transition
-                    size_screen = gm.Vec2(*screen.get_size())
+                    size_screen = np.array(screen.get_size())
                     size_splash = size_screen * 0.67
                     pos_splash = (size_screen - size_splash) / 2
 
@@ -49,7 +53,7 @@ class GattiProgram:
                     bg.blit(layer, (0, 0))
 
                     # entering the SEARCH state and waiting for termination to read transition
-                    self.state = self.search.run(screen, pg.font.SysFont("Calibri", 24), bg, gm.Vec2(*screen.get_size()) / 2)
+                    self.state = self.search.run(screen, pg.font.SysFont("Calibri", 24), bg, np.array(screen.get_size()) / 2)
 
                     # transition from search query to board
                     if self.state == GattiState.BOARD:
@@ -59,10 +63,15 @@ class GattiProgram:
 
                         # add image to center of the board with half-screen-width scale
                         scale_rel = 0.5 * screen.get_width() / srf.get_width()
-                        scale_abs = scale_rel / self.board.cam_scale
-                        pos_rel = (gm.Vec2(*screen.get_size()) - gm.Vec2(*srf.get_size())  * scale_rel) / 2
-                        pos_abs = gm.absto(pos_rel, self.board.cam_pos, self.board.cam_scale)
-                        self.board.add(self.search.result, srf, pos_abs, scale_abs)
+                        scale_abs = scale_rel / self.board.cam_z
+                        pos_rel = (np.array(screen.get_size()) - np.array(srf.get_size())  * scale_rel) / 2
+                        pos_abs = gm.absto(pos_rel, self.board.cam_xy, self.board.cam_z)
+                        self.board.add(
+                            px=pg.surfarray.array3d(srf),
+                            id=GATTI_ID,
+                            box_gl=np.array([pos_abs[0], pos_abs[1], scale_abs * srf.get_width(), scale_abs * srf.get_height()], np.float64)
+                        )
+                        GATTI_ID += 1
 
                 case GattiState.BOARD:
                     # entering the BOARD state and waiting for termination to read transition

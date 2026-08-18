@@ -1,256 +1,303 @@
-import pygame as pg
+# built-in
+from enum import Enum, auto
+from dataclasses import dataclass
 from time import perf_counter
-import sys
-from dataclasses import dataclass, astuple
 
+# vendored
+import numpy as np
+import numba as nb
+import pygame as pg
+
+# local
 import gatti_params as gp
 import gatti_colors as gc
 import gatti_state as gs
 import gatti_math as gm
+import gatti_gfx as gg
+
+
+class Action(Enum):
+    FLOAT = auto()
+    IMAGE = auto()
+    BOARD = auto()
+    SCRAP = auto()
 
 
 @dataclass(slots=True)
 class GattiBoard:
-    # Variables (camera)
-    cam_pos: gm.Vec2
-    cam_scale: float
-    old_scale: float
-    # Variables (images)
+    pixels: np.array
+    assoc: np.array
+    # count of the images (equals to 'n')
     img_count: int
-    img_path: list[str]
-    img_pos: list[gm.Vec2]
-    img_crop_pos: list[gm.Vec2]
-    img_srf_on: list[pg.Surface]
-    img_srf_off: list[pg.Surface]
-    img_size_on: list[gm.Vec2]
-    img_size_off: list[gm.Vec2]
-    img_scale: list[float]
-    ifoc: int
-    grid: pg.Surface
+
+    img_width: np.array
+    img_height: np.array
+    
+    # each identifier references a unique image source (total n.shape of (n,))
+    img_id: np.array
+
+    # list of the local geometry of 'n' images (total np.shape of (n, 4))
+    img_box_lo: np.array
+
+    # list of the global geometry of 'n' images (total np.shape of (n, 4))
+    img_box_gl: np.array
+
+    # camera
+    cam_xy: np.array
+    cam_z: float
 
     @classmethod
     def empty(cls):
         return cls(
-            cam_pos=gm.Vec2(0.0, 0.0),
-            cam_scale=1.0,
-            old_scale=0.0,
+            pixels=np.zeros((0,), dtype=np.uint8),
+            assoc=np.zeros((0,), dtype=np.uint32),
             img_count=0,
-            img_path=[],
-            img_pos=[],
-            img_crop_pos=[],
-            img_srf_on=[],
-            img_srf_off=[],
-            img_size_on=[],
-            img_size_off=[],
-            img_scale=[],
-            ifoc=0,
-            grid=None
+            img_width=np.zeros((0,), dtype=np.uint32),
+            img_height=np.zeros((0,), dtype=np.uint32),
+            img_id=np.zeros((0,), dtype=np.uint32),
+            img_box_lo=np.zeros((0, 4), dtype=np.float64),
+            img_box_gl=np.zeros((0, 4), dtype=np.float64),
+            cam_xy=np.array([0.0, 0.0], dtype=np.float64),
+            cam_z=1.0
         )
 
-    def add(self, path, srf, pos, scale):
-        self.img_path.append(path)
-        self.img_pos.append(pos)
-        self.img_crop_pos.append(gm.Vec2(0, 0))
-        self.img_srf_on.append(pg.transform.smoothscale_by(srf, scale * self.cam_scale))
-        self.img_srf_off.append(srf)
-        self.img_size_on.append(gm.Vec2(*srf.get_size()) * scale)
-        self.img_size_off.append(gm.Vec2(*srf.get_size()))
-        self.img_scale.append(scale)
+    def add(self, px: np.array, id: int, box_gl: np.array):
+
+        if self.assoc.shape[0] <= id:
+            self.assoc = np_array_concat(self.assoc, np.zeros(id + 1, np.uint32))
+        self.assoc[id] = self.pixels.shape[0]
+
+        self.pixels = np_array_concat(self.pixels, px.flatten())
+        self.img_id = np_array_concat(self.img_id, np.array([id], dtype=np.uint32))
+        self.img_width = np_array_concat(self.img_width, np.array([px.shape[0]], dtype=np.uint32))
+        self.img_height = np_array_concat(self.img_height, np.array([px.shape[1]], dtype=np.uint32))
+        self.img_box_gl = np_array_concat(self.img_box_gl, np.array([box_gl], np.float64))
+        self.img_box_lo = np_array_concat(self.img_box_lo, np.array([[0, 0, px.shape[0], px.shape[1]]], np.float64))
+
         self.img_count += 1
 
-    def scale_lazy(self, iimg, screen):
-
-        # edge-edge description of image screen-rectangle (north-west and south-east)
-        pos_nw = gm.relto(self.img_pos[iimg], self.cam_pos, self.cam_scale)
-        pos_se = pos_nw + self.img_size_on[iimg] * self.cam_scale
-
-        # project rectangle edges onto nearest screen edge
-        pos_nw_clip = gm.minmax(gm.Vec2(0, 0), pos_nw, gm.Vec2(*screen.get_size()))
-        pos_se_clip = gm.minmax(gm.Vec2(0, 0), pos_se, gm.Vec2(*screen.get_size()))
-
-        # edge-lenght description of image absolute-rectangle before scaling
-        scale_total = self.cam_scale * self.img_scale[iimg]
-        pos_clip = gm.minmax(gm.Vec2(0, 0), (pos_nw_clip - pos_nw) / scale_total, self.img_size_off[iimg])
-        size_clip = gm.minmax(gm.Vec2(0, 0), (pos_se_clip - pos_nw_clip) / scale_total, self.img_size_off[iimg])
-        rect = (pos_clip.x, pos_clip.y, size_clip.x, size_clip.y)
-
-        # image rectangle absolute edge after scaling
-        self.img_crop_pos[iimg] = pos_clip * self.img_scale[iimg]
-
-        # image portion that is out-of-scope is cropped away then the remaining is scaled
-        self.img_srf_on[iimg] = pg.transform.smoothscale_by(self.img_srf_off[iimg].subsurface(rect), scale_total)
-
-    def run(self, screen, font_hud):
-
-        self.grid = pg.Surface((gp.WIDTH + gp.GRID_SPACING, gp.HEIGHT + gp.GRID_SPACING))
-        running = True
+    def run(self, screen: pg.Surface, imgmap: list[pg.Surface]):
         bg_color = gc.BG_MOVE
+        running = True
 
-        win = 32
-        samples = [0] * win
+        cur_pos = np.array(pg.mouse.get_pos(), np.float64)
+        cur_dpos = np.zeros((2,), np.float64)
+        cur_dz = 0.0
+        action = (Action.FLOAT, Action.FLOAT)
+        focused = self.img_count
+
         while running:
-
-            spf = perf_counter()
-
+            t = perf_counter()
+            # write actions
             for event in pg.event.get():
+                if event.type == pg.MOUSEBUTTONDOWN:
+                    if event.button == 1:
+                        focused = mouse_in_box(gm.absto(cur_pos, self.cam_xy, self.cam_z), self.img_box_gl, self.img_count)
+                
+                if event.type == pg.MOUSEMOTION:
+                    cur_dpos[0] = event.pos[0] - cur_pos[0]
+                    cur_dpos[1] = event.pos[1] - cur_pos[1]
+                    cur_pos[0], cur_pos[1] = event.pos
+                    if event.buttons[0] and focused < self.img_count:
+                        self.img_box_gl[focused,:2] += cur_dpos / self.cam_z
+                    elif event.buttons[0] and focused == self.img_count:
+                        self.cam_xy -= cur_dpos / self.cam_z
 
-                # globally pan the environment if no image is left clicked or by arbitrary right click
-                if event.type == pg.MOUSEMOTION and ((event.buttons[0] and self.ifoc == self.img_count) or event.buttons[2]):
-                    self.cam_pos -= gm.Vec2(*event.rel) / self.cam_scale
-                    for i in range(self.img_count):
-                        nw = gm.absto(gm.Vec2(0, 0), self.cam_pos, self.cam_scale)
-                        se = gm.absto(gm.Vec2(*screen.get_size()), self.cam_pos, self.cam_scale)
-                        if not (
-                                gm.in_box(nw, self.img_pos[i], se) and
-                                gm.in_box(nw, self.img_pos[i] + self.img_size_on[i], se)
-                        ):
-                            self.scale_lazy(i, screen)
+                if event.type == pg.MOUSEWHEEL:
+                    if focused < self.img_count:
+                        cur_proj = gm.absto(cur_pos, self.cam_xy, self.cam_z)
+                        self.img_box_gl[focused][0:2] = gm.absto(self.img_box_gl[focused][0:2] - cur_proj, cur_proj, 1.0 - event.y * 0.05)
+                        self.img_box_gl[focused][2:4] /= 1.0 - event.y * 0.05
 
-                # globally scale the environment if no image is focused
-                elif event.type == pg.MOUSEWHEEL and self.ifoc == self.img_count:
-
-                    # the mouse cursor is used as the center of the zoom (fixed point)
-                    dz = 1.0 - event.y * 0.05
-                    self.cam_pos += gm.Vec2(*pg.mouse.get_pos()) * (1 - dz) / self.cam_scale
-                    self.cam_scale /= dz
-
-                    for i in range(self.img_count):
-                        self.scale_lazy(i, screen)
-
-                # unfocus an image by right click
-                if event.type == pg.MOUSEBUTTONDOWN and event.button == 3:
-                    self.ifoc = self.img_count
-                    bg_color = gc.BG_TRAVEL
-
-                # focus an image by left click
-                elif event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
-
-                    # if the cursor isn't clicking an image set the focus out of scale
-                    self.ifoc = self.img_count
-                    bg_color = gc.BG_TRAVEL
-
-                    # check if cursor (projected into the image space) is contained inside any image
-                    for i in reversed(range(self.img_count)):
-
-                        cur_proj = gm.absto(gm.Vec2(*event.pos), self.cam_pos, self.cam_scale)
-                        if gm.in_box(self.img_pos[i], cur_proj, self.img_pos[i] + self.img_size_on[i]):
-                            # push focused image to the top layer
-                            self.img_pos.append(self.img_pos.pop(i))
-                            self.img_path.append(self.img_path.pop(i))
-                            self.img_crop_pos.append(self.img_crop_pos.pop(i))
-                            self.img_srf_on.append(self.img_srf_on.pop(i))
-                            self.img_srf_off.append(self.img_srf_off.pop(i))
-                            self.img_size_on.append(self.img_size_on.pop(i))
-                            self.img_size_off.append(self.img_size_off.pop(i))
-                            self.img_scale.append(self.img_scale.pop(i))
-
-                            # set focused image index
-                            self.ifoc = self.img_count - 1
-                            bg_color = gc.BG_MOVE
-
-                            # lower image opacity
-                            self.img_srf_off[self.ifoc].set_alpha(100)
-                            self.img_srf_on[self.ifoc].set_alpha(100)
-
-                            break
-
-                # higher image opacity of focused image when mouse button is being let go of
-                elif self.ifoc < self.img_count and event.type == pg.MOUSEBUTTONUP and event.button == 1:
-                    self.img_srf_off[self.ifoc].set_alpha(255)
-                    self.img_srf_on[self.ifoc].set_alpha(255)
-
-                # pan an image by the dragged distance if an image is focused and the cursor is dragging
-                elif self.ifoc < self.img_count and event.type == pg.MOUSEMOTION and event.buttons[0]:
-                    self.img_pos[self.ifoc] += gm.Vec2(*event.rel) / self.cam_scale
-                    nw = gm.absto(gm.Vec2(0, 0), self.cam_pos, self.cam_scale)
-                    se = gm.absto(gm.Vec2(*screen.get_size()), self.cam_pos, self.cam_scale)
-                    if not (
-                            gm.in_box(nw, self.img_pos[self.ifoc], se) and
-                            gm.in_box(nw, self.img_pos[self.ifoc] + self.img_size_on[self.ifoc], se)
-                    ):
-                        self.scale_lazy(self.ifoc, screen)
-
-                # scale the image if an image is foucsed and the mouse-wheel is rolling
-                elif self.ifoc < self.img_count and event.type == pg.MOUSEWHEEL:
-
-                    # the mouse cursor is used as the center of the zoom (fixed point)
-                    cur_proj = gm.absto(gm.Vec2(*pg.mouse.get_pos()), self.cam_pos, self.cam_scale)
-                    img_pos_rel = self.img_pos[self.ifoc] - cur_proj
-                    self.img_pos[self.ifoc] = gm.absto(img_pos_rel, cur_proj, 1.0 - event.y * 0.05)
-                    self.img_scale[self.ifoc] /= 1.0 - event.y * 0.05
-                    self.img_size_on[self.ifoc] = self.img_size_off[self.ifoc] * self.img_scale[self.ifoc]
-
-                    # update the scales locally
-                    self.scale_lazy(self.ifoc, screen)
-
-                # delete the image if an image is focused and the X key is pressed
-                elif self.ifoc < self.img_count and event.type == pg.KEYDOWN and event.key == pg.K_x:
-                    self.img_path.pop(self.ifoc)
-                    self.img_srf_on.pop(self.ifoc)
-                    self.img_srf_off.pop(self.ifoc)
-                    self.img_pos.pop(self.ifoc)
-                    self.img_size_on.pop(self.ifoc)
-                    self.img_size_off.pop(self.ifoc)
-                    self.img_scale.pop(self.ifoc)
-                    self.img_count -= 1
-
+                    if focused == self.img_count:
+                        dz = 1.0 - event.y * 0.05
+                        self.cam_xy += cur_pos * (1 - dz) / self.cam_z
+                        self.cam_z /= dz
+                
                 # check for transition events, they are triggered by a keyboard press
                 if event.type == pg.KEYDOWN:
-
-                    # switch to searching if the S key is pressed
-                    if event.key == pg.K_s:
-                        return gs.GattiState.SEARCH
-
                     # exit program if the ESC key is pressed
                     if event.key == pg.K_ESCAPE:
                         return gs.GattiState.EXIT
 
-            # update grid
-            if (self.old_scale != self.cam_scale):
-            
-                n_col = int(gp.WIDTH / gp.GRID_SPACING / self.cam_scale)
-                n_row = int(gp.HEIGHT / gp.GRID_SPACING / self.cam_scale)
+                    # exit program if the ESC key is pressed
+                    elif event.key == pg.K_s:
+                        return gs.GattiState.SEARCH
 
-                # fill background color
-                self.grid.fill(bg_color)
-            
-                for i in range(n_col + 2):
-                    col = i * gp.GRID_SPACING * self.cam_scale
-                    pg.draw.line(self.grid, gc.GRID_COLOR, (col, 0), (col, gp.HEIGHT+gp.GRID_SPACING))
-            
-                for j in range(n_row + 2):
-                    row = j * gp.GRID_SPACING * self.cam_scale
-                    pg.draw.line(self.grid, gc.GRID_COLOR, (0, row), (gp.WIDTH+gp.GRID_SPACING, row))
-                self.old_scale = self.cam_scale
+            # draw background
+            screen.fill(bg_color)
+            screen.lock()
 
-            # draw background & grid
-            start_col = self.cam_pos.x - (self.cam_pos.x % gp.GRID_SPACING)
-            start_row = self.cam_pos.y - (self.cam_pos.y % gp.GRID_SPACING)
-            start = gm.Vec2(start_col,start_row)
-            pos_grid = gm.relto(start,self.cam_pos,self.cam_scale)
-            screen.blit(self.grid, astuple(pos_grid))
+            # draw grid
+            draw_grid(self.cam_xy, self.cam_z, pg.surfarray.pixels3d(screen))
 
             # draw images
-            for i in range(0, self.img_count):
-                pos_screen = gm.relto(self.img_pos[i] + self.img_crop_pos[i], self.cam_pos, self.cam_scale)
-                screen.blit(self.img_srf_on[i], astuple(pos_screen))
-
-            # draw milliseconds per frame
-            samples.pop(0)
-            samples.append(perf_counter() - spf)
-            mspf_avg = str(gm.siground(100 * sum(samples) / win, 2)).ljust(5, '0')
-            msrf_spf = font_hud.render(f"mspf: {mspf_avg}", True, "#ffffff")
-            pos_hud = gm.Vec2(0, screen.get_height()) - gm.Vec2(0, 3 * font_hud.get_height())
-            screen.blit(msrf_spf, (pos_hud.x, pos_hud.y))
-
-            # loaded pixel count
-            srf_pixels = font_hud.render(f"pixels(loaded): {sum(srf.get_width() * srf.get_height() for srf in self.img_srf_off)}", True, "#ffffff")
-            pos_hud = gm.Vec2(0, screen.get_height()) - gm.Vec2(0, 2 * font_hud.get_height())
-            screen.blit(srf_pixels, (pos_hud.x, pos_hud.y))
-
-            # rendered pixel count
-            srf_pixels = font_hud.render(f"pixels(render): {sum(srf.get_width() * srf.get_height() for srf in self.img_srf_on)}", True, "#ffffff")
-            pos_hud = gm.Vec2(0, screen.get_height()) - gm.Vec2(0, font_hud.get_height())
-            screen.blit(srf_pixels, (pos_hud.x, pos_hud.y))
-
+            draw(
+                self.pixels,
+                self.assoc,
+                self.img_count,
+                self.img_id,
+                self.img_height,
+                self.img_box_lo,
+                self.img_box_gl,
+                self.cam_xy,
+                self.cam_z,
+                pg.surfarray.pixels3d(screen),
+                screen.get_width(),
+                screen.get_height(),
+            )
+            screen.unlock()
             pg.display.update()
+            print(perf_counter() - t)
+
+
+def np_array_concat(base: np.array, ext: np.array) -> np.array:
+    base_dynamic, *base_static = base.shape
+    ext_dynamic, *ext_static = ext.shape
+    # check for equal "higher order" SHAPE and equal TYPE
+    assert len(base_static) == len(ext_static), f"Incompatible shape {len(base_static)}d vs. {len(ext_static)}d"
+    assert all(n == m for n, m in zip(base_static, ext_static)), f"Incompatible size {base_static} vs. {ext_static}"
+    assert base.dtype == ext.dtype, f"Incompatible type {base.dtype} vs. {ext.dtype}"
+
+    # allocate new array
+    new = np.zeros((base_dynamic + ext_dynamic, *base_static), base.dtype)
+
+    # copy data from base
+    new[:base_dynamic] = base
+
+    # write data from extension
+    new[base_dynamic:] = ext
+
+    return new
+
+''' WARNING:
+
+The following monolithic function, although un-pythonic, was made
+with the good intent of being fast by:
+  - avoiding python's loops for the numerous blits
+  - scale in place instead of allocating new surfaces (pygame)
+
+with this in mind proceed with caution, this function can SEGFAULT
+the program.
+
+TIPS (for developers):
+  - when modifying the following function use '@nb.jit(boundscheck=True)'
+'''
+
+@nb.jit(nopython=True, parallel=True)
+def mouse_in_box(
+        cur_xy: np.array,
+        img_box_gl: np.array,
+        img_count: int
+):
+    if img_count == 0:
+        return 0
+    
+    indeces = (img_count + 1) * np.ones((img_count,), np.uint32)
+    for i in nb.prange(img_count):
+        if (img_box_gl[i][0] < cur_xy[0] < img_box_gl[i][0] + img_box_gl[i][2] and
+            img_box_gl[i][1] < cur_xy[1] < img_box_gl[i][1] + img_box_gl[i][3]):
+            indeces[i] -= i + 1
+    m = min(indeces)
+    if m > img_count:
+        return img_count
+    else:
+        return img_count - m
+
+@nb.jit(nopython=True, parallel=True)
+def draw(
+        pixels: np.array,
+        assoc: np.array,
+        img_count: int,
+        img_id: np.array,
+        img_height: np.array,
+        img_box_lo: np.array,
+        img_box_gl: np.array,
+        cam_xy: np.array,
+        cam_z: float,
+        screen: np.array,
+        screen_width: int,
+        screen_height: int
+):
+    OFFSET_RGB = 3
+    for i in range(img_count):
+        id = img_id[i]
+
+        # local (lo) and global (gl)
+        # column offset (x), row offset (y), column range (w) and row range (h)
+        x_lo = img_box_lo[i, 0]
+        y_lo = img_box_lo[i, 1]
+        w_lo = img_box_lo[i, 2]
+        h_lo = img_box_lo[i, 3]
+        x_gl = img_box_gl[i, 0]
+        y_gl = img_box_gl[i, 1]
+        w_gl = img_box_gl[i, 2] * cam_z
+        h_gl = img_box_gl[i, 3] * cam_z
+
+        # cull pixels outside of the screen
+        x_screen = (x_gl - cam_xy[0]) * cam_z
+        y_screen = (y_gl - cam_xy[1]) * cam_z
+        x_clip = min(max(x_screen, 0), screen_width)
+        y_clip = min(max(y_screen, 0), screen_height)
+        w_clip = int(min(max(w_gl + x_screen, 0), screen_width) - x_clip)
+        h_clip = int(min(max(h_gl + y_screen, 0), screen_height) - y_clip)
+
+        # scaling factors
+        h_fac = (h_lo - 1) / (h_gl - 1)
+        w_fac = (w_lo - 1) / (w_gl - 1)
+        h_lo_max = img_height[i]
+
+        for y_rel in nb.prange(h_clip):
+            for x_rel in range(w_clip):
+                for ch in range(OFFSET_RGB):
+                    screen[round(x_clip + x_rel), round(y_clip + y_rel), ch] = pixels[
+                        assoc[id] +
+                        (h_lo_max * OFFSET_RGB * round(x_lo + (x_clip - x_screen + x_rel) * w_fac)) +
+                        (OFFSET_RGB * round(y_lo + (y_clip - y_screen + y_rel) * h_fac)) +
+                        ch
+                    ]
+
+
+#@nb.jit(nopython=True, parallel=True)
+@nb.jit(boundscheck=True)
+def draw_grid(
+        cam_xy: np.array,
+        cam_z: float,
+        screen: np.array
+):
+    start_col = cam_xy[0] - (cam_xy[0] % gp.GRID_SPACING)
+    start_row = cam_xy[1] - (cam_xy[1] % gp.GRID_SPACING)
+
+    n_col = min(int(gp.WIDTH / gp.GRID_SPACING / cam_z) + 1, gp.WIDTH)
+    n_row = min(int(gp.HEIGHT / gp.GRID_SPACING / cam_z) + 1, gp.WIDTH)
+
+    t = (1 - 1 / (cam_z + 1)) ** 2
+    # griglia
+    for i in nb.prange(n_col - 1):
+        col = int((start_col + (i + 1) * gp.GRID_SPACING - cam_xy[0]) * cam_z)
+        for row in range(gp.HEIGHT):
+            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
+            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
+            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
+
+    for j in nb.prange(n_row - 1):
+        row = int((start_row + (j + 1) * gp.GRID_SPACING - cam_xy[1]) * cam_z)
+        for col in range(gp.WIDTH):
+            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
+            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
+            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
+
+    # bordi sud-est
+    col = int((start_col + n_col * gp.GRID_SPACING - cam_xy[0]) * cam_z)
+    if col < gp.WIDTH:
+        for row in range(gp.HEIGHT):
+            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
+            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
+            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
+
+    row = int((start_row + n_row * gp.GRID_SPACING - cam_xy[1]) * cam_z)
+    if row < gp.HEIGHT:
+        for col in range(gp.WIDTH):
+            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
+            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
+            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
