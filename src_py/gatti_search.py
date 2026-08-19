@@ -50,11 +50,13 @@ class GattiSearch:
 
                 # pop latest user-input character if the BACKSPACE key is pressed
                 if event.key == pg.K_BACKSPACE:
-                    if len(self.part) > 0:
-                        self.part = self.part[:-1]
-                    else:
+                    if len(self.part) == 0:
                         self.walk, _ = os.path.split(self.walk)
-                        
+                    elif event.mod == pg.KMOD_NONE:
+                        self.part = self.part[:-1]
+                    elif event.mod == pg.KMOD_LCTRL:
+                        self.part = ""
+
                 # roll through hints
                 elif event.key == pg.K_TAB:
                     self.index = (self.index + 1) % len(self.hint)

@@ -1,3 +1,4 @@
+import sys
 import os
 import json
 from subprocess import call, DEVNULL
@@ -13,11 +14,15 @@ SUBDIR_VENV = "venv_build"
 VENDOR = ["numpy", "numba", "icc-rt", "pygame-ce", "setuptools", "pyinstaller"]
 
 
+
+if len(sys.argv) > 1 and sys.argv[1] == "clean":
+    call(["rm", "-rf", "build"])
+    exit()
+
 try:
     os.mkdir(DIR_BUILD)
 except FileExistsError:
     pass
-
 
 # installing modules
 print(f"Creating build environment... ", end='', flush=True)

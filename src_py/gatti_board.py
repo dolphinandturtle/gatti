@@ -97,6 +97,8 @@ class GattiBoard:
                 if event.type == pg.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         focused = mouse_in_box(gm.absto(cur_pos, self.cam_xy, self.cam_z), self.img_box_gl, self.img_count)
+                    elif event.button == 3:
+                        focused = self.img_count
                 
                 if event.type == pg.MOUSEMOTION:
                     cur_dpos[0] = event.pos[0] - cur_pos[0]
@@ -104,7 +106,7 @@ class GattiBoard:
                     cur_pos[0], cur_pos[1] = event.pos
                     if event.buttons[0] and focused < self.img_count:
                         self.img_box_gl[focused,:2] += cur_dpos / self.cam_z
-                    elif event.buttons[0] and focused == self.img_count:
+                    elif (event.buttons[0] or event.buttons[2]) and focused == self.img_count:
                         self.cam_xy -= cur_dpos / self.cam_z
 
                 if event.type == pg.MOUSEWHEEL:
