@@ -1,7 +1,9 @@
 # built-in
+import os
 from enum import Enum, auto
 from dataclasses import dataclass
 from time import perf_counter
+from gatti_gfx import draw, draw_grid, mouse_in_box
 
 # vendored
 import numpy as np
@@ -76,7 +78,7 @@ class GattiBoard:
 
         self.img_count += 1
 
-    def run(self, screen: pg.Surface, imgmap: list[pg.Surface]):
+    def run(self, screen: pg.Surface):
         bg_color = gc.BG_MOVE
         running = True
 
@@ -85,6 +87,8 @@ class GattiBoard:
         cur_dz = 0.0
         action = (Action.FLOAT, Action.FLOAT)
         focused = self.img_count
+
+        clock = pg.time.Clock()
 
         while running:
             t = perf_counter()
@@ -129,7 +133,7 @@ class GattiBoard:
             screen.lock()
 
             # draw grid
-            draw_grid(self.cam_xy, self.cam_z, pg.surfarray.pixels3d(screen))
+            draw_grid(screen.get_width(), screen.get_height(), gp.GRID_SPACING, self.cam_xy, self.cam_z, pg.surfarray.pixels3d(screen))
 
             # draw images
             draw(
@@ -148,7 +152,7 @@ class GattiBoard:
             )
             screen.unlock()
             pg.display.update()
-            print(perf_counter() - t)
+            clock.tick(60)
 
 
 def np_array_concat(base: np.array, ext: np.array) -> np.array:
@@ -169,135 +173,3 @@ def np_array_concat(base: np.array, ext: np.array) -> np.array:
     new[base_dynamic:] = ext
 
     return new
-
-''' WARNING:
-
-The following monolithic function, although un-pythonic, was made
-with the good intent of being fast by:
-  - avoiding python's loops for the numerous blits
-  - scale in place instead of allocating new surfaces (pygame)
-
-with this in mind proceed with caution, this function can SEGFAULT
-the program.
-
-TIPS (for developers):
-  - when modifying the following function use '@nb.jit(boundscheck=True)'
-'''
-
-@nb.jit(nopython=True, parallel=True)
-def mouse_in_box(
-        cur_xy: np.array,
-        img_box_gl: np.array,
-        img_count: int
-):
-    if img_count == 0:
-        return 0
-    
-    indeces = (img_count + 1) * np.ones((img_count,), np.uint32)
-    for i in nb.prange(img_count):
-        if (img_box_gl[i][0] < cur_xy[0] < img_box_gl[i][0] + img_box_gl[i][2] and
-            img_box_gl[i][1] < cur_xy[1] < img_box_gl[i][1] + img_box_gl[i][3]):
-            indeces[i] -= i + 1
-    m = min(indeces)
-    if m > img_count:
-        return img_count
-    else:
-        return img_count - m
-
-@nb.jit(nopython=True, parallel=True)
-def draw(
-        pixels: np.array,
-        assoc: np.array,
-        img_count: int,
-        img_id: np.array,
-        img_height: np.array,
-        img_box_lo: np.array,
-        img_box_gl: np.array,
-        cam_xy: np.array,
-        cam_z: float,
-        screen: np.array,
-        screen_width: int,
-        screen_height: int
-):
-    OFFSET_RGB = 3
-    for i in range(img_count):
-        id = img_id[i]
-
-        # local (lo) and global (gl)
-        # column offset (x), row offset (y), column range (w) and row range (h)
-        x_lo = img_box_lo[i, 0]
-        y_lo = img_box_lo[i, 1]
-        w_lo = img_box_lo[i, 2]
-        h_lo = img_box_lo[i, 3]
-        x_gl = img_box_gl[i, 0]
-        y_gl = img_box_gl[i, 1]
-        w_gl = img_box_gl[i, 2] * cam_z
-        h_gl = img_box_gl[i, 3] * cam_z
-
-        # cull pixels outside of the screen
-        x_screen = (x_gl - cam_xy[0]) * cam_z
-        y_screen = (y_gl - cam_xy[1]) * cam_z
-        x_clip = min(max(x_screen, 0), screen_width)
-        y_clip = min(max(y_screen, 0), screen_height)
-        w_clip = int(min(max(w_gl + x_screen, 0), screen_width) - x_clip)
-        h_clip = int(min(max(h_gl + y_screen, 0), screen_height) - y_clip)
-
-        # scaling factors
-        h_fac = (h_lo - 1) / (h_gl - 1)
-        w_fac = (w_lo - 1) / (w_gl - 1)
-        h_lo_max = img_height[i]
-
-        for y_rel in nb.prange(h_clip):
-            for x_rel in range(w_clip):
-                for ch in range(OFFSET_RGB):
-                    screen[round(x_clip + x_rel), round(y_clip + y_rel), ch] = pixels[
-                        assoc[id] +
-                        (h_lo_max * OFFSET_RGB * round(x_lo + (x_clip - x_screen + x_rel) * w_fac)) +
-                        (OFFSET_RGB * round(y_lo + (y_clip - y_screen + y_rel) * h_fac)) +
-                        ch
-                    ]
-
-
-#@nb.jit(nopython=True, parallel=True)
-@nb.jit(boundscheck=True)
-def draw_grid(
-        cam_xy: np.array,
-        cam_z: float,
-        screen: np.array
-):
-    start_col = cam_xy[0] - (cam_xy[0] % gp.GRID_SPACING)
-    start_row = cam_xy[1] - (cam_xy[1] % gp.GRID_SPACING)
-
-    n_col = min(int(gp.WIDTH / gp.GRID_SPACING / cam_z) + 1, gp.WIDTH)
-    n_row = min(int(gp.HEIGHT / gp.GRID_SPACING / cam_z) + 1, gp.WIDTH)
-
-    t = (1 - 1 / (cam_z + 1)) ** 2
-    # griglia
-    for i in nb.prange(n_col - 1):
-        col = int((start_col + (i + 1) * gp.GRID_SPACING - cam_xy[0]) * cam_z)
-        for row in range(gp.HEIGHT):
-            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
-            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
-            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
-
-    for j in nb.prange(n_row - 1):
-        row = int((start_row + (j + 1) * gp.GRID_SPACING - cam_xy[1]) * cam_z)
-        for col in range(gp.WIDTH):
-            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
-            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
-            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
-
-    # bordi sud-est
-    col = int((start_col + n_col * gp.GRID_SPACING - cam_xy[0]) * cam_z)
-    if col < gp.WIDTH:
-        for row in range(gp.HEIGHT):
-            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
-            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
-            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
-
-    row = int((start_row + n_row * gp.GRID_SPACING - cam_xy[1]) * cam_z)
-    if row < gp.HEIGHT:
-        for col in range(gp.WIDTH):
-            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
-            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
-            screen[col, row, 2] = int(t * 255 + (1-t) * 34)

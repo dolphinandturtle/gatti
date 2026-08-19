@@ -75,7 +75,7 @@ class GattiProgram:
 
                 case GattiState.BOARD:
                     # entering the BOARD state and waiting for termination to read transition
-                    self.state = self.board.run(screen, pg.font.SysFont("Calibri", 16))
+                    self.state = self.board.run(screen)
 
                 case GattiState.EXIT:
                     # exit the program

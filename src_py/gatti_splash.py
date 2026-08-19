@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 
 import json
@@ -10,7 +11,7 @@ import gatti_colors as gc
 import gatti_state as gs
 
 
-cwd, thisfile = os.path.split(__file__)
+cwd, thisfile = os.path.split(sys.argv[0])
 with open(os.path.join(cwd, "about.json"), "r") as file:
     ABOUT = json.load(file)
     VERSION = ABOUT["version"]

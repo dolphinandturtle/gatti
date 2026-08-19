@@ -27,29 +27,18 @@ prog = GattiProgram.empty()
 
 
 try:
-    # supply the last save as the one to be loaded
-    if len(argv) == 1:
-        try:
-            with open(".save", "r") as file:
-                path_save = file.read()
-        except FileNotFoundError:
-            print("No previous instance was found, please supply an argument")
-            exit()
-
     # supply the save specified in the argument as the one to be loaded
-    elif len(argv) == 2:
+    if len(argv) == 2:
         path_save = argv[1]
+        with tarfile.open(path_save, "r:gz") as tar:
+            data_cam = json.load(tar.extractfile("camera.json"))
+            data_img = json.load(tar.extractfile("board.json"))
+            load_program(prog, data_cam, data_img)
 
     # to many arguments
     elif len(argv) > 2:
         print("To many arguments were supplied")
         exit()
-
-    # loading supplied save
-    with tarfile.open(path_save, "r:gz") as tar:
-        data_cam = json.load(tar.extractfile("camera.json"))
-        data_img = json.load(tar.extractfile("board.json"))
-        load_program(prog, data_cam, data_img)
 
 except FileNotFoundError:
     # create a save using the supplied argument

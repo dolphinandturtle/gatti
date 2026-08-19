@@ -1,8 +1,9 @@
+import sys
 import os
 import json
 
 
-cwd, thisfile = os.path.split(__file__)
+cwd, thisfile = os.path.split(sys.argv[0])
 with open(os.path.join(cwd, "path"), "r") as file:
     path = os.path.join(*(line for line in file), "settings.json")
 
