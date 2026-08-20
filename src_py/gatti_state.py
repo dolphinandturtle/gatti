@@ -6,3 +6,4 @@ class GattiState(Enum):
     EXIT = auto()
     SEARCH = auto()
     SPLASH = auto()
+    CLIP = auto()

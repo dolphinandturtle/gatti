@@ -1,6 +1,7 @@
 import numpy as np
 import pygame as pg
 from dataclasses import dataclass
+from subprocess import call
 
 import gatti_math as gm
 import gatti_colors as gc
@@ -49,6 +50,7 @@ class GattiProgram:
                     # layer solid color over blur
                     layer = pg.Surface(screen.get_size())
                     layer.fill(gc.BG_SEARCH)
+
                     layer.set_alpha(100)
                     bg.blit(layer, (0, 0))
 
@@ -76,6 +78,26 @@ class GattiProgram:
                 case GattiState.BOARD:
                     # entering the BOARD state and waiting for termination to read transition
                     self.state = self.board.run(screen)
+
+                case GattiState.CLIP:
+                    with open(f"tmp_{GATTI_ID}.png", "wb") as file:
+                        call(["xclip", "-selection", "clipboard", "-o"], stdout=file)
+
+                    # load the searched image
+                    srf = pg.image.load(f"tmp_{GATTI_ID}.png").convert_alpha()
+
+                    # add image to center of the board with half-screen-width scale
+                    scale_rel = 0.5 * screen.get_width() / srf.get_width()
+                    scale_abs = scale_rel / self.board.cam_z
+                    pos_rel = (np.array(screen.get_size()) - np.array(srf.get_size())  * scale_rel) / 2
+                    pos_abs = gm.absto(pos_rel, self.board.cam_xy, self.board.cam_z)
+                    self.board.add(
+                        px=pg.surfarray.array3d(srf),
+                        id=GATTI_ID,
+                        box_gl=np.array([pos_abs[0], pos_abs[1], scale_abs * srf.get_width(), scale_abs * srf.get_height()], np.float64)
+                    )
+                    GATTI_ID += 1
+                    self.state = GattiState.BOARD
 
                 case GattiState.EXIT:
                     # exit the program

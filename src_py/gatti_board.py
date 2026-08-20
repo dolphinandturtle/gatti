@@ -3,7 +3,6 @@ import os
 from enum import Enum, auto
 from dataclasses import dataclass
 from time import perf_counter
-from gatti_gfx import draw, draw_grid, mouse_in_box
 
 # vendored
 import numpy as np
@@ -15,7 +14,7 @@ import gatti_params as gp
 import gatti_colors as gc
 import gatti_state as gs
 import gatti_math as gm
-import gatti_gfx as gg
+from gatti_gfx import draw, draw_grid, mouse_in_box
 
 
 class Action(Enum):
@@ -129,6 +128,9 @@ class GattiBoard:
                     # exit program if the ESC key is pressed
                     elif event.key == pg.K_s:
                         return gs.GattiState.SEARCH
+
+                    elif event.mod == pg.KMOD_LCTRL and event.key == pg.K_v:
+                        return gs.GattiState.CLIP
 
             # draw background
             screen.fill(bg_color)
