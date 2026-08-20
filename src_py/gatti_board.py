@@ -51,7 +51,7 @@ class GattiBoard:
     def empty(cls):
         return cls(
             pixels=np.zeros((0,), dtype=np.uint8),
-            assoc=np.zeros((0,), dtype=np.uint32),
+            assoc=np.full((0,), np.iinfo(np.uint32).max, dtype=np.uint32),
             img_count=0,
             img_width=np.zeros((0,), dtype=np.uint32),
             img_height=np.zeros((0,), dtype=np.uint32),
@@ -65,10 +65,12 @@ class GattiBoard:
     def add(self, px: np.array, id: int, box_gl: np.array):
 
         if self.assoc.shape[0] <= id:
-            self.assoc = np_array_concat(self.assoc, np.zeros(id + 1, np.uint32))
-        self.assoc[id] = self.pixels.shape[0]
+            self.assoc = np_array_concat(self.assoc, np.full((id + 1,), np.iinfo(np.uint32).max, dtype=np.uint32))
 
-        self.pixels = np_array_concat(self.pixels, px.flatten())
+        if self.assoc[id] == np.iinfo(np.uint32).max:
+            self.assoc[id] = self.pixels.shape[0]
+            self.pixels = np_array_concat(self.pixels, px.flatten())
+
         self.img_id = np_array_concat(self.img_id, np.array([id], dtype=np.uint32))
         self.img_width = np_array_concat(self.img_width, np.array([px.shape[0]], dtype=np.uint32))
         self.img_height = np_array_concat(self.img_height, np.array([px.shape[1]], dtype=np.uint32))
