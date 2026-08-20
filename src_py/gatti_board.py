@@ -14,6 +14,7 @@ import gatti_params as gp
 import gatti_colors as gc
 import gatti_state as gs
 import gatti_math as gm
+import gatti_array as ga
 from gatti_gfx import draw, draw_grid, mouse_in_box
 
 
@@ -26,13 +27,8 @@ class Action(Enum):
 
 @dataclass(slots=True)
 class GattiBoard:
-    pixels: np.array
-    assoc: np.array
     # count of the images (equals to 'n')
     img_count: int
-
-    img_width: np.array
-    img_height: np.array
     
     # each identifier references a unique image source (total n.shape of (n,))
     img_id: np.array
@@ -50,11 +46,7 @@ class GattiBoard:
     @classmethod
     def empty(cls):
         return cls(
-            pixels=np.zeros((0,), dtype=np.uint8),
-            assoc=np.full((0,), np.iinfo(np.uint32).max, dtype=np.uint32),
             img_count=0,
-            img_width=np.zeros((0,), dtype=np.uint32),
-            img_height=np.zeros((0,), dtype=np.uint32),
             img_id=np.zeros((0,), dtype=np.uint32),
             img_box_lo=np.zeros((0, 4), dtype=np.float64),
             img_box_gl=np.zeros((0, 4), dtype=np.float64),
@@ -62,24 +54,18 @@ class GattiBoard:
             cam_z=1.0
         )
 
-    def add(self, px: np.array, id: int, box_gl: np.array):
+    def add(self, id: int, screen: np.array):
+        scale_rel = 0.5 * screen.get_width() / srf.get_width()
+        scale_abs = scale_rel / self.cam_z
+        pos_rel = (np.array(screen.get_size()) - np.array(srf.get_size())  * scale_rel) / 2
+        pos_abs = gm.absto(pos_rel, self.cam_xy, self.cam_z)
 
-        if self.assoc.shape[0] <= id:
-            self.assoc = np_array_concat(self.assoc, np.full((id + 1,), np.iinfo(np.uint32).max, dtype=np.uint32))
-
-        if self.assoc[id] == np.iinfo(np.uint32).max:
-            self.assoc[id] = self.pixels.shape[0]
-            self.pixels = np_array_concat(self.pixels, px.flatten())
-
-        self.img_id = np_array_concat(self.img_id, np.array([id], dtype=np.uint32))
-        self.img_width = np_array_concat(self.img_width, np.array([px.shape[0]], dtype=np.uint32))
-        self.img_height = np_array_concat(self.img_height, np.array([px.shape[1]], dtype=np.uint32))
-        self.img_box_gl = np_array_concat(self.img_box_gl, np.array([box_gl], np.float64))
-        self.img_box_lo = np_array_concat(self.img_box_lo, np.array([[0, 0, px.shape[0], px.shape[1]]], np.float64))
-
+        self.img_id = ga.np_array_concat(self.img_id, np.array([id], dtype=np.uint32))
+        self.img_box_gl = ga.np_array_concat(self.img_box_gl, np.array([pos_abs[0], pos_abs[1], scale_abs * srf.get_width(), scale_abs * srf.get_height()], np.float64))
+        self.img_box_lo = ga.np_array_concat(self.img_box_lo, np.array([[0, 0, px.shape[0], px.shape[1]]], np.float64))
         self.img_count += 1
 
-    def run(self, screen: pg.Surface):
+    def run(self, screen: pg.Surface, px_data: np.array, px_assoc: np.array, px_shape: np.array):
         bg_color = gc.BG_MOVE
         running = True
 
@@ -143,11 +129,11 @@ class GattiBoard:
 
             # draw images
             draw(
-                self.pixels,
-                self.assoc,
+                px_data,
+                px_assoc,
+                px_shape,
                 self.img_count,
                 self.img_id,
-                self.img_height,
                 self.img_box_lo,
                 self.img_box_gl,
                 self.cam_xy,
@@ -159,23 +145,3 @@ class GattiBoard:
             screen.unlock()
             pg.display.update()
             clock.tick(60)
-
-
-def np_array_concat(base: np.array, ext: np.array) -> np.array:
-    base_dynamic, *base_static = base.shape
-    ext_dynamic, *ext_static = ext.shape
-    # check for equal "higher order" SHAPE and equal TYPE
-    assert len(base_static) == len(ext_static), f"Incompatible shape {len(base_static)}d vs. {len(ext_static)}d"
-    assert all(n == m for n, m in zip(base_static, ext_static)), f"Incompatible size {base_static} vs. {ext_static}"
-    assert base.dtype == ext.dtype, f"Incompatible type {base.dtype} vs. {ext.dtype}"
-
-    # allocate new array
-    new = np.zeros((base_dynamic + ext_dynamic, *base_static), base.dtype)
-
-    # copy data from base
-    new[:base_dynamic] = base
-
-    # write data from extension
-    new[base_dynamic:] = ext
-
-    return new

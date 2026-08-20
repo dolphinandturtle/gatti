@@ -43,14 +43,14 @@ def mouse_in_box(
         return img_count - m
 
 
-@cc.export("draw", "void(u1[:], u4[:], u4, u4[:], u4[:], f8[:,:], f8[:,:], f8[:], f8, u1[:,:,:], u4, u4)")
+@cc.export("draw", "void(u1[:], u4[:], u4[:,:], u4, u4[:], f8[:,:], f8[:,:], f8[:], f8, u1[:,:,:], u4, u4)")
 @nb.jit(nopython=True, parallel=True, fastmath=True)
 def draw(
-        pixels: np.array,
-        assoc: np.array,
+        px_data: np.array,
+        px_assoc: np.array,
+        px_shape: np.array,
         img_count: int,
         img_id: np.array,
-        img_height: np.array,
         img_box_lo: np.array,
         img_box_gl: np.array,
         cam_xy: np.array,
@@ -85,13 +85,13 @@ def draw(
         # scaling factors
         h_fac = (h_lo - 1) / (h_gl - 1)
         w_fac = (w_lo - 1) / (w_gl - 1)
-        h_lo_max = img_height[i]
+        h_lo_max = px_shape[i][1]
 
         for y_rel in nb.prange(h_clip):
             for x_rel in range(w_clip):
                 for ch in range(OFFSET_RGB):
-                    screen[round(x_clip + x_rel), round(y_clip + y_rel), ch] = pixels[
-                        assoc[id] +
+                    screen[round(x_clip + x_rel), round(y_clip + y_rel), ch] = px_data[
+                        px_assoc[id] +
                         (h_lo_max * OFFSET_RGB * round(x_lo + (x_clip - x_screen + x_rel) * w_fac)) +
                         (OFFSET_RGB * round(y_lo + (y_clip - y_screen + y_rel) * h_fac)) +
                         ch

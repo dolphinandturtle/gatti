@@ -5,16 +5,21 @@ from subprocess import call
 
 import gatti_math as gm
 import gatti_colors as gc
+import gatti_array as ga
 from gatti_board import GattiBoard
 from gatti_search import GattiSearch
 from gatti_splash  import GattiSplash
 from gatti_state import GattiState
 
 
-GATTI_ID = 0
-
 @dataclass(slots=True)
 class GattiProgram:
+    px_data: np.array
+    px_assoc: np.array
+    px_shape: np.array
+    id_src: dict[str, int]
+    id_count: int
+
     state: GattiState
     board: GattiBoard
     search: GattiSearch
@@ -22,10 +27,42 @@ class GattiProgram:
 
     @classmethod
     def empty(cls):
-        return cls(GattiState.SPLASH, GattiBoard.empty(), GattiSearch.empty(), GattiSplash.empty())
+        return cls(
+            px_data=np.zeros((0,), dtype=np.uint8),
+            px_assoc=np.zeros((0,), dtype=np.uint32),
+            px_shape=np.zeros((0, 2), dtype=np.uint32),
+            id_src=dict(),
+            id_count=0,
+            state=GattiState.SPLASH,
+            board=GattiBoard.empty(),
+            search=GattiSearch.empty(),
+            splash=GattiSplash.empty()
+        )
+
+    def add(self, path: str) -> int:
+        if path in self.id_src:
+            return self.id_src[path]
+        else:
+            # linear ID assignment mechanism
+            id = self.id_count
+            self.id_count += 1
+
+            # add pixel information of the new image (referenced by the path)
+            new_px_data = pg.surfarray.array3d(pg.image.load(path)).flatten()
+            self.px_data = ga.np_array_concat(self.px_data, new_px_data)
+            self.px_shape = ga.np_array_concat(self.px_shape, new_px_data.shape)
+            
+            # associate id to image inside the pool of pixel data
+            self.px_assoc = ga.np_array_concat(self.px_assoc, np.zeros((id + 1,), dtype=np.uint32))
+            self.px_assoc[id] = self.px_data.shape[0]
+            
+            # associate path to id
+            self.id_src[path] = id
+
+            return id
 
     def run(self, screen):
-        global GATTI_ID
+        global id_count
         while True:
             match self.state:
 
@@ -59,44 +96,17 @@ class GattiProgram:
 
                     # transition from search query to board
                     if self.state == GattiState.BOARD:
-
-                        # load the searched image
-                        srf = pg.image.load(self.search.result).convert_alpha()
-
-                        # add image to center of the board with half-screen-width scale
-                        scale_rel = 0.5 * screen.get_width() / srf.get_width()
-                        scale_abs = scale_rel / self.board.cam_z
-                        pos_rel = (np.array(screen.get_size()) - np.array(srf.get_size())  * scale_rel) / 2
-                        pos_abs = gm.absto(pos_rel, self.board.cam_xy, self.board.cam_z)
-                        self.board.add(
-                            px=pg.surfarray.array3d(srf),
-                            id=GATTI_ID,
-                            box_gl=np.array([pos_abs[0], pos_abs[1], scale_abs * srf.get_width(), scale_abs * srf.get_height()], np.float64)
-                        )
-                        GATTI_ID += 1
+                        self.board.add(id=self.add(self.search.result), screen)
 
                 case GattiState.BOARD:
                     # entering the BOARD state and waiting for termination to read transition
-                    self.state = self.board.run(screen)
+                    self.state = self.board.run(screen, self.px_data, self.px_shape, self.px_assoc)
 
                 case GattiState.CLIP:
-                    with open(f"tmp_{GATTI_ID}.png", "wb") as file:
+                    with open(f"tmp_{id_count}.png", "wb") as file:
                         call(["xclip", "-selection", "clipboard", "-o"], stdout=file)
 
-                    # load the searched image
-                    srf = pg.image.load(f"tmp_{GATTI_ID}.png").convert_alpha()
-
-                    # add image to center of the board with half-screen-width scale
-                    scale_rel = 0.5 * screen.get_width() / srf.get_width()
-                    scale_abs = scale_rel / self.board.cam_z
-                    pos_rel = (np.array(screen.get_size()) - np.array(srf.get_size())  * scale_rel) / 2
-                    pos_abs = gm.absto(pos_rel, self.board.cam_xy, self.board.cam_z)
-                    self.board.add(
-                        px=pg.surfarray.array3d(srf),
-                        id=GATTI_ID,
-                        box_gl=np.array([pos_abs[0], pos_abs[1], scale_abs * srf.get_width(), scale_abs * srf.get_height()], np.float64)
-                    )
-                    GATTI_ID += 1
+                    self.board.add(id=self.add(f"tmp_{id_count}.png"), screen)
                     self.state = GattiState.BOARD
 
                 case GattiState.EXIT:
