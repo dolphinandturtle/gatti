@@ -63,7 +63,7 @@ def draw_frames(
         # scaling factors
         h_fac = (h_lo - 1) / (h_gl - 1)
         w_fac = (w_lo - 1) / (w_gl - 1)
-        h_lo_max = px_shape[i][1]
+        h_lo_max = px_shape[id][1]
 
         for y_rel in nb.prange(h_clip):
             for x_rel in range(w_clip):
@@ -75,9 +75,10 @@ def draw_frames(
                         ch
                     ]
 
-@cc.export("draw_grid", "void(u4, u4, u4, f8[:], f8, u1[:,:,:])")
+@cc.export("draw_grid", "void(u1[:], u4, u4, u4, f8[:], f8, u1[:,:,:])")
 @nb.jit(nopython=True, parallel=True, fastmath=True)
 def draw_grid(
+        color: np.array,
         width: int,
         height: int,
         cell_size: int,
@@ -85,6 +86,8 @@ def draw_grid(
         cam_z: float,
         screen: np.array
 ):
+    grid_color = 255 - int(float(color[0] + color[1] + color[2]) / 3)
+
     start_col = cam_xy[0] - (cam_xy[0] % cell_size)
     start_row = cam_xy[1] - (cam_xy[1] % cell_size)
 
@@ -96,31 +99,31 @@ def draw_grid(
     for i in nb.prange(n_col - 1):
         col = int((start_col + (i + 1) * cell_size - cam_xy[0]) * cam_z)
         for row in range(height):
-            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
-            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
-            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
+            screen[col, row, 0] = int(t * grid_color + (1-t) * color[0])
+            screen[col, row, 1] = int(t * grid_color + (1-t) * color[1])
+            screen[col, row, 2] = int(t * grid_color + (1-t) * color[2])
 
     for j in nb.prange(n_row - 1):
         row = int((start_row + (j + 1) * cell_size - cam_xy[1]) * cam_z)
         for col in range(width):
-            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
-            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
-            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
+            screen[col, row, 0] = int(t * grid_color + (1-t) * color[0])
+            screen[col, row, 1] = int(t * grid_color + (1-t) * color[1])
+            screen[col, row, 2] = int(t * grid_color + (1-t) * color[2])
 
     # bordi sud-est
     col = int((start_col + n_col * cell_size - cam_xy[0]) * cam_z)
     if col < width:
         for row in range(height):
-            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
-            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
-            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
+            screen[col, row, 0] = int(t * grid_color + (1-t) * color[0])
+            screen[col, row, 1] = int(t * grid_color + (1-t) * color[1])
+            screen[col, row, 2] = int(t * grid_color + (1-t) * color[2])
 
     row = int((start_row + n_row * cell_size - cam_xy[1]) * cam_z)
     if row < height:
         for col in range(width):
-            screen[col, row, 0] = int(t * 255 + (1-t) * 34)
-            screen[col, row, 1] = int(t * 255 + (1-t) * 39)
-            screen[col, row, 2] = int(t * 255 + (1-t) * 34)
+            screen[col, row, 0] = int(t * grid_color + (1-t) * color[0])
+            screen[col, row, 1] = int(t * grid_color + (1-t) * color[1])
+            screen[col, row, 2] = int(t * grid_color + (1-t) * color[2])
 
 
 if __name__ == "__main__":

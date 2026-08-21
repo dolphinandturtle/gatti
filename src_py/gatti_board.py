@@ -20,6 +20,8 @@ from gatti_geo import point_in_box
 class Action(Enum):
     FLOAT = auto()
     PAN = auto()
+    PULL = auto()
+    REMOVE = auto()
     ZOOM = auto()
 
 
@@ -53,11 +55,13 @@ class GattiBoard:
         )
 
     def add(self, id: int, px_shape: np.array, screen: np.array):
+        # position image at center with half screen-scale
         scale_rel = 0.5 * screen.get_width() / px_shape[id][0]
         scale_abs = scale_rel / self.cam_z
         pos_rel = (np.array(screen.get_size()) - px_shape[id] * scale_rel) / 2
         pos_abs = pos_rel / self.cam_z + self.cam_xy
 
+        # add image fields
         self.img_id = ga.np_array_concat(self.img_id, np.array([id], dtype=np.uint32))
         self.img_box_gl = ga.np_array_concat(self.img_box_gl, np.array([[pos_abs[0], pos_abs[1], scale_abs * px_shape[id][0], scale_abs * px_shape[id][1]]], np.float64))
         self.img_box_lo = ga.np_array_concat(self.img_box_lo, np.array([[0, 0, px_shape[id][0], px_shape[id][1]]], np.float64))
@@ -77,10 +81,11 @@ class GattiBoard:
 
         while True:
 
-            cur_dpos[0] = 0
-            cur_dpos[1] = 0
-            cur_y = 0
+            cur_dpos[0] = 0.0
+            cur_dpos[1] = 0.0
+            cur_y /= 1.5
 
+            # EVENT DECODING
             for event in pg.event.get():
 
                 if event.type == pg.MOUSEMOTION:
@@ -90,7 +95,7 @@ class GattiBoard:
                     cur_pos[1] = event.pos[1] / self.cam_z + self.cam_xy[1]
 
                 if event.type == pg.MOUSEBUTTONDOWN:
-                    action = Action.PAN
+                    action = Action.PULL
 
                     if event.button == 1:
                         target = point_in_box(cur_pos, self.img_box_gl, self.img_count)
@@ -106,7 +111,10 @@ class GattiBoard:
                     cur_y += event.y
 
                 if event.type == pg.KEYDOWN:
-                    if event.key == pg.K_ESCAPE:
+                    if target < self.img_count and event.key == pg.K_x:
+                        action = Action.REMOVE
+
+                    elif event.key == pg.K_ESCAPE:
                         return gs.GattiState.EXIT
 
                     elif event.key == pg.K_s:
@@ -115,11 +123,15 @@ class GattiBoard:
                     elif event.mod == pg.KMOD_LCTRL and event.key == pg.K_v:
                         return gs.GattiState.CLIP
 
-            # panning and zooming the board
+            # BOARD OPERATIONS
             if target == self.img_count:
                 # panning
                 if action == Action.PAN:
                     self.cam_xy -= cur_dpos
+
+                # pulling doesn't do anything on the board
+                elif action == Action.PULL:
+                    action = Action.PAN
 
                 # zooming relative to the cursor center
                 elif action == Action.ZOOM:
@@ -127,17 +139,44 @@ class GattiBoard:
                     self.cam_xy += (cur_pos - self.cam_xy) * (1 - dz)
                     self.cam_z /= dz
 
-            # panning, zooming and deleting images
+            # IMAGE OPERATIONS
             elif target < self.img_count:
                 # panning
                 if action == Action.PAN:
                     self.img_box_gl[target,:2] += cur_dpos
 
-                # zooming relative to the cursor center
+                # pulling
+                elif action == Action.PULL:
+                    ga.np_array_swap(self.img_id, (target, target + 1))
+                    ga.np_array_swap(self.img_box_lo, (target, target + 1))
+                    ga.np_array_swap(self.img_box_gl, (target, target + 1))
+                    target = self.img_count - 1
+                    action = Action.PAN
+
+                # zoom image
                 elif action == Action.ZOOM:
+
+                    # pulling to camera cursor center
                     self.img_box_gl[target][0:2] -= cur_pos
+
+                    # scaling from the center
                     self.img_box_gl[target] /= (1.0 - cur_y * 0.05)
+
+                    # pushing camera cursor center
                     self.img_box_gl[target][0:2] += cur_pos
+
+                # remove image
+                elif action == Action.REMOVE:
+
+                    # popping image fields at 'target' location
+                    self.img_id = ga.np_array_pop(self.img_id, (target, target + 1))
+                    self.img_box_lo = ga.np_array_pop(self.img_box_lo, (target, target + 1))
+                    self.img_box_gl = ga.np_array_pop(self.img_box_gl, (target, target + 1))
+                    self.img_count -= 1
+
+                    # new state
+                    target = self.img_count
+                    action = action.FLOAT
 
             # handled by pygame
             screen.fill(bg_color)
@@ -146,7 +185,7 @@ class GattiBoard:
             screen.lock()
             px_screen = pg.surfarray.pixels3d(screen)
             w_screen, h_screen = screen.get_size()
-            draw_grid(w_screen, h_screen, gp.GRID_SPACING, self.cam_xy, self.cam_z, px_screen)
+            draw_grid(bg_color, w_screen, h_screen, gp.GRID_SPACING, self.cam_xy, self.cam_z, px_screen)
             draw_frames(px_data, px_assoc, px_shape, self.img_count, self.img_id, self.img_box_lo, self.img_box_gl, self.cam_xy, self.cam_z, px_screen, w_screen, h_screen)
             screen.unlock()
 
