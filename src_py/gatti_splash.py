@@ -9,8 +9,15 @@ from dataclasses import dataclass
 import gatti_state as gs
 
 
-cwd, thisfile = os.path.split(sys.argv[0])
-with open(os.path.join(cwd, "about.json"), "r") as file:
+if getattr(sys, 'frozen', False):
+    cwd, thisfile = os.path.split(__file__)
+else:
+    cwd, thisfile = os.path.split(sys.argv[0])
+
+with open(os.path.join(cwd, "path"), "r") as file:
+    path = os.path.join(*(line for line in file), "about.json")
+
+with open(path, "r") as file:
     ABOUT = json.load(file)
     VERSION = ABOUT["version"]
     CREDITS = ABOUT["credits"]

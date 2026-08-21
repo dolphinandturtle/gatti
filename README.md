@@ -2,7 +2,7 @@
 
 
 # Introduction
-A simple **image viewer** that focuses on cumulative browsing.
+A simple **image viewer** _soft-ware_ that focuses on cumulative browsing.
 Images are queried from a *search bar* and loaded onto an infinite *board*, it can accomodates and infinite amount of images at different scales without compromises on quality.
 
 
@@ -10,8 +10,8 @@ Images are queried from a *search bar* and loaded onto an infinite *board*, it c
 1. Download a *Python 3.14.5 (or higher)* installer from [here](https://www.python.org/downloads/), unless the former isn't already installed on your machine
 
 ### Linux
-2. Execute the installer with privilege `sudo python -BO install.py`
-3. Uninstall the program with privilege `sudo python -BO install.py uninstall`
+2. Execute the installer with privilege `python -BO install.py`
+3. Uninstall the program with privilege `python -BO install.py uninstall`
 
 ### Windows
 2. Open `Command Prompt` with elevated privilege (right click on application and left click *run as administrator*)
@@ -45,7 +45,6 @@ The execution starts from `main.py` that applies `gatti_serialization.py` to cal
 
 ## Upcoming features
 * Image comments
-* World grid
 * Physical panning and zooming (momentum, viscousity and elasticity)
 * Local and global rotation
 * Image cropping
@@ -59,29 +58,3 @@ The execution starts from `main.py` that applies `gatti_serialization.py` to cal
 
 ### Levenshtein distance
 A method used to compare the similarity between two strings. This is used in the search algorithm to show the best hints possible.
-
-### Lazy scaling
-Because most of the time images are scaled outside the scope of the viewport and scaling (smooth-scaling especially) is a costly operation, the idea behind *lazy scaling* is that of cropping out image information outside the viewport's scope before scaling. Without *lazy scaling* zooming very far in creates to much latency. The cost of *lazy scaling* is that *panning* can't be done anymore indipendently of *lazy scaling* a strategy is to make a single pass of *full scaling* before.
-```
-image.rect_screen = relative_to(image.rect_world, camera)
-image.rect.nw = minmax((0, 0), image.rect_screen.nw, (screen.width, screen.height))
-image.rect.se = minmax((0, 0), image.rect_screen.se, (screen.width, screen.height))
-image.rect_world = absolute_to(image.rect_screen, camera)
-scale(crop(image))
-```
-
-### Fixed point scaling
-Given a change in camera `z`, which `X` should the camera be placed at such that a point `x` remains unchanged (primed variables indicate the transformed counterpart)?
-```
-(x/z + X) = (x'/z' + X') and x = x'
-  => (x/z + X) = (x/z' + X')
-
-X' = x/z - x/z' + X = x(1/z - 1/z') + X
-   = x((z'-z)/zz') + X = = x(z'(1-z/z')/zz') + X
-   = x((1-z/z')/z) + X
-
-dz := z/z'
-X' = x((1-z/z')/z) + X 
-  => X += (1-dz)x/z
-```
-Therefore `(1-dz)x/z` will be the final camera offset that maintains the absolute position `x` constant. This is how I've implemented fixed point zooming.

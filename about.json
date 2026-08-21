@@ -1,17 +1,19 @@
 {
-    "version": "0.0.0",
+    "version": "pre-release",
     "credits": [
         {
             "name": "Alessandro Rayan Ahmed",
             "role": "development",
-            "contacts": {},
-            "comment": "Founder and lead developer of gatti"
+            "contacts": {
+                "email": "iamreallybadatphysics@gmail.com"
+            },
+            "comment": "Founder and lead developer of the project"
         },
         {
             "name": "Gabriele Baldi",
             "role": "development",
             "contacts": {},
-            "comment": "Implemented the first grid graphics and was significantly envolved with testing the project and giving feedback"
+            "comment": "Developed the project in its early stages. Is responsible for the implementation of the 'grid'"
         }
     ]
 }

@@ -117,7 +117,7 @@ def draw_grid(
             screen[col, row, 0] = int(t * grid_color + (1-t) * color[0])
             screen[col, row, 1] = int(t * grid_color + (1-t) * color[1])
             screen[col, row, 2] = int(t * grid_color + (1-t) * color[2])
-
+    
     row = int((start_row + n_row * cell_size - cam_xy[1]) * cam_z)
     if row < height:
         for col in range(width):
