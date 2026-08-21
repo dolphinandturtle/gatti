@@ -3,7 +3,6 @@ import pygame as pg
 from dataclasses import dataclass
 from subprocess import call
 
-import gatti_math as gm
 import gatti_colors as gc
 import gatti_array as ga
 from gatti_board import GattiBoard
@@ -47,14 +46,16 @@ class GattiProgram:
             id = self.id_count
             self.id_count += 1
 
-            # add pixel information of the new image (referenced by the path)
-            new_px_data = pg.surfarray.array3d(pg.image.load(path)).flatten()
-            self.px_data = ga.np_array_concat(self.px_data, new_px_data)
-            self.px_shape = ga.np_array_concat(self.px_shape, new_px_data.shape)
-            
             # associate id to image inside the pool of pixel data
             self.px_assoc = ga.np_array_concat(self.px_assoc, np.zeros((id + 1,), dtype=np.uint32))
             self.px_assoc[id] = self.px_data.shape[0]
+
+            # add pixel information of the new image (referenced by the path)
+            srf = pg.image.load(path)
+            new_px_data = pg.surfarray.array3d(srf).flatten()
+            new_px_shape = np.array(srf.get_size(), dtype=np.uint32)
+            self.px_data = ga.np_array_concat(self.px_data, np.array(new_px_data, dtype=np.uint8))
+            self.px_shape = ga.np_array_concat(self.px_shape, np.array([new_px_shape], dtype=np.uint32))
             
             # associate path to id
             self.id_src[path] = id
@@ -62,7 +63,6 @@ class GattiProgram:
             return id
 
     def run(self, screen):
-        global id_count
         while True:
             match self.state:
 
@@ -96,17 +96,17 @@ class GattiProgram:
 
                     # transition from search query to board
                     if self.state == GattiState.BOARD:
-                        self.board.add(id=self.add(self.search.result), screen)
+                        self.board.add(self.add(self.search.result), self.px_shape, screen)
 
                 case GattiState.BOARD:
                     # entering the BOARD state and waiting for termination to read transition
-                    self.state = self.board.run(screen, self.px_data, self.px_shape, self.px_assoc)
+                    self.state = self.board.run(screen, self.px_data, self.px_assoc, self.px_shape)
 
                 case GattiState.CLIP:
-                    with open(f"tmp_{id_count}.png", "wb") as file:
+                    with open(f"tmp_{self.id_count}.png", "wb") as file:
                         call(["xclip", "-selection", "clipboard", "-o"], stdout=file)
 
-                    self.board.add(id=self.add(f"tmp_{id_count}.png"), screen)
+                    self.board.add(self.add(f"tmp_{self.id_count}.png"), self.px_shape, screen)
                     self.state = GattiState.BOARD
 
                 case GattiState.EXIT:

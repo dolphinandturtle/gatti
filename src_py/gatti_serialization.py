@@ -1,43 +1,41 @@
 import numpy as np
-import pygame as pg
-import gatti_math as gm
 
 
-def load_program(prog, data_cam, data_img):
+def load_program(prog, d):
+    # load image data
+    for src in d["sources"]:
+        prog.add(src)
 
-    for img in data_img:
-        prog.board.add(
-            path=img["path"],
-            srf=pg.image.load(img["path"]).convert_alpha(),
-            pos=np.array([img["position"]["x"], img["position"]["y"]]),
-            scale=img["scale"]
-        )
-
-    # loading camera data
-    prog.board.cam_xy = np.array([data_cam["position"]["x"], data_cam["position"]["y"]])
-    prog.board.cam_z = data_cam["scale"]
+    # load arangement data
+    prog.board.img_count = len(d["frames"])
+    prog.board.img_id = np.array([f["id"] for f in d["frames"]], dtype=np.uint32)
+    prog.board.img_box_lo = np.array([[f["local"]["x"], f["local"]["y"], f["local"]["w"], f["local"]["h"]] for f in d["frames"]], dtype=np.float64)
+    prog.board.img_box_gl = np.array([[f["global"]["x"], f["global"]["y"], f["global"]["w"], f["global"]["h"]] for f in d["frames"]], dtype=np.float64)
+    prog.board.cam_xy = np.array([d["camera"]["x"], d["camera"]["y"]], dtype=np.float64)
+    prog.board.cam_z = d["camera"]["z"]
 
 
 def dump_program(prog):
     return {
+        "sources": prog.id_src,
         "camera": {
-            "x": prog.board.cam_xy[0],
-            "y": prog.board.cam_xy[1],
-            "z": prog.board.cam_z
+            "x": float(prog.board.cam_xy[0]),
+            "y": float(prog.board.cam_xy[1]),
+            "z": float(prog.board.cam_z)
         },
-        "board": [{
-            "id": prog.board.img_path[i],
+        "frames": [{
+            "id": int(prog.board.img_id[i]),
             "local": {
-                "x": prog.board.img_box_lo[i][0],
-                "y": prog.board.img_box_lo[i][1],
-                "width": prog.board.img_box_lo[i][2],
-                "height": prog.board.img_box_lo[i][3]
+                "x": float(prog.board.img_box_lo[i][0]),
+                "y": float(prog.board.img_box_lo[i][1]),
+                "w": float(prog.board.img_box_lo[i][2]),
+                "h": float(prog.board.img_box_lo[i][3])
             },
             "global": {
-                "x": prog.board.img_box_gl[i][0],
-                "y": prog.board.img_box_gl[i][1],
-                "width": prog.board.img_box_gl[i][2],
-                "height": prog.board.img_box_gl[i][3]
+                "x": float(prog.board.img_box_gl[i][0]),
+                "y": float(prog.board.img_box_gl[i][1]),
+                "w": float(prog.board.img_box_gl[i][2]),
+                "h": float(prog.board.img_box_gl[i][3])
             }
         } for i in range(prog.board.img_count)]
     }

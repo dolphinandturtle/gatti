@@ -4,7 +4,6 @@ import os
 import pygame as pg
 from dataclasses import dataclass
 
-import gatti_math as gm
 import gatti_colors as gc
 import gatti_state as gs
 

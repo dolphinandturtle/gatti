@@ -4,10 +4,8 @@ import numpy as np
 import json
 import os
 import pygame as pg
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass
 
-import gatti_math as gm
-import gatti_colors as gc
 import gatti_state as gs
 
 
@@ -61,7 +59,7 @@ class GattiSplash:
             for i, agent in enumerate(CREDITS):
                 offset = np.array([0, i * font_credits.get_height() + font_title.get_height()])
                 name, role = agent["name"], agent["role"]
-                handle = font_credits.render(f"[{role.upper()}] {name}", True, "#ffffff")
+                handle = font_credits.render(f"by {name}", True, "#ffffff")
                 screen.blit(handle, pos + offset + gpad)
 
             pg.display.update()

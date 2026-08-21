@@ -21,31 +21,9 @@ TIPS (for developers):
 '''
 
 
-@cc.export("mouse_in_box", "u4(f8[:], f8[:,:], u4)")
+@cc.export("draw_frames", "void(u1[:], u4[:], u4[:,:], u4, u4[:], f8[:,:], f8[:,:], f8[:], f8, u1[:,:,:], u4, u4)")
 @nb.jit(nopython=True, parallel=True, fastmath=True)
-def mouse_in_box(
-        cur_xy: np.array,
-        img_box_gl: np.array,
-        img_count: int
-):
-    if img_count == 0:
-        return 0
-    
-    indeces = (img_count + 1) * np.ones((img_count,), np.uint32)
-    for i in nb.prange(img_count):
-        if (img_box_gl[i][0] < cur_xy[0] < img_box_gl[i][0] + img_box_gl[i][2] and
-            img_box_gl[i][1] < cur_xy[1] < img_box_gl[i][1] + img_box_gl[i][3]):
-            indeces[i] -= i + 1
-    m = min(indeces)
-    if m > img_count:
-        return img_count
-    else:
-        return img_count - m
-
-
-@cc.export("draw", "void(u1[:], u4[:], u4[:,:], u4, u4[:], f8[:,:], f8[:,:], f8[:], f8, u1[:,:,:], u4, u4)")
-@nb.jit(nopython=True, parallel=True, fastmath=True)
-def draw(
+def draw_frames(
         px_data: np.array,
         px_assoc: np.array,
         px_shape: np.array,

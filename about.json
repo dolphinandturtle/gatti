@@ -1,14 +1,16 @@
 {
-    "version": "splashless (un-official)",
+    "version": "0.0.0",
     "credits": [
         {
-            "name": "Alessandro Rayan Ahmed (@green)",
+            "name": "Alessandro Rayan Ahmed",
             "role": "development",
+            "contacts": {},
             "comment": "Founder and lead developer of gatti"
         },
         {
-            "name": "Gabriele Baldi (@Gabri360)",
+            "name": "Gabriele Baldi",
             "role": "development",
+            "contacts": {},
             "comment": "Implemented the first grid graphics and was significantly envolved with testing the project and giving feedback"
         }
     ]

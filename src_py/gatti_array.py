@@ -1,3 +1,6 @@
+import numpy as np
+
+
 def np_array_concat(base: np.array, ext: np.array) -> np.array:
     base_dynamic, *base_static = base.shape
     ext_dynamic, *ext_static = ext.shape
