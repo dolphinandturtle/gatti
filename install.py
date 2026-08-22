@@ -232,7 +232,7 @@ def run_devenv():
             call([os.path.join(DIR_BUILD, SUBDIR_VENV, "bin", "python"), "-BO", os.path.join(DIR_BUILD, fname)])
             print("Done!")
 
-    call([os.path.join(DIR_BUILD, SUBDIR_VENV, "bin", "python"), "-B", os.path.join(DIR_BUILD, "main.py")])
+    call([os.path.join(DIR_BUILD, SUBDIR_VENV, "bin", "python"), "-B", os.path.join(DIR_BUILD, "main.py"), *sys.argv[2:]])
 
 
 def _sync_files(master: str, slave: str):

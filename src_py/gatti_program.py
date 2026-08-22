@@ -42,6 +42,11 @@ class GattiProgram:
         if path in self.id_src:
             return self.id_src[path]
         else:
+            try:
+                srf = pg.image.load(path)
+            except pg.error:
+                return self.id_count + 1
+
             # linear ID assignment mechanism
             id = self.id_count
             self.id_count += 1
@@ -96,7 +101,11 @@ class GattiProgram:
 
                     # transition from search query to board
                     if self.state == GattiState.BOARD:
-                        self.board.add(self.add(self.search.result), self.px_shape, screen)
+                        id = self.add(self.search.result)
+                        if id < self.id_count:
+                            self.board.add(id, self.px_shape, screen)
+                        else:
+                            print("Unsupported image format")
 
                 case GattiState.BOARD:
                     # entering the BOARD state and waiting for termination to read transition
@@ -106,7 +115,12 @@ class GattiProgram:
                     with open(f"tmp_{self.id_count}.png", "wb") as file:
                         call(["xclip", "-selection", "clipboard", "-o"], stdout=file)
 
-                    self.board.add(self.add(f"tmp_{self.id_count}.png"), self.px_shape, screen)
+                    id = self.add(f"tmp_{self.id_count}.png")
+                    if id < self.id_count:
+                        self.board.add(id, self.px_shape, screen)
+                    else:
+                        print("Unsupported image format")
+
                     self.state = GattiState.BOARD
 
                 case GattiState.EXIT:
