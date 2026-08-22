@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pygame as pg
 from dataclasses import dataclass
@@ -115,7 +116,7 @@ class GattiProgram:
                     with open(f"tmp_{self.id_count}.png", "wb") as file:
                         call(["xclip", "-selection", "clipboard", "-o"], stdout=file)
 
-                    id = self.add(f"tmp_{self.id_count}.png")
+                    id = self.add(os.path.abspath(f"tmp_{self.id_count}.png"))
                     if id < self.id_count:
                         self.board.add(id, self.px_shape, screen)
                     else:

@@ -40,7 +40,8 @@ try:
         print("To many arguments were supplied")
         sys.exit(0)
 
-except FileNotFoundError:
+except FileNotFoundError as e:
+    print(e)
     # create a save using the supplied argument
     print(f"Couldn't find {path_save}, creating a new instance")
 

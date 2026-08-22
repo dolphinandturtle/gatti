@@ -216,7 +216,7 @@ def install_devenv():
         file.write(os.path.join(DIR_BUILD, "config"))
     
     call(["cp", "-r", "themes", DIR_BUILD])
-    call(["cp", "about.json", DIR_BUILD])
+    call(["cp", "about.json", os.path.join(DIR_BUILD, "config")])
     print("Done!")
 
 
