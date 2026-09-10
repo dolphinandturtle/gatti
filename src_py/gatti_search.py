@@ -7,6 +7,20 @@ from dataclasses import dataclass
 import gatti_colors as gc
 import gatti_state as gs
 
+session_type = os.environ.get("XDG_SESSION_TYPE")
+is_hyprland = "HYPRLAND_INSTANCE_SIGNATURE" in os.environ
+wayland_display = os.environ.get("WAYLAND_DISPLAY")
+
+# doesn't work on emacs terminal if HYPRLAND_INSTANCE_SIGNATURE doesn't exists, try to restart
+
+if is_hyprland:
+    OFFSET_CTRL = 4096
+elif session_type == "wayland":
+    OFFSET_CTRL = 4096
+elif session_type == "x11":
+    OFFSET_CTRL = 0
+else:
+    OFFSET_CTRL = 0
 
 @dataclass(slots=True)
 class GattiSearch:
@@ -42,7 +56,6 @@ class GattiSearch:
 
         while True:
             for event in pg.event.get():
-
                 # ignore non-keyboard input
                 if event.type != pg.KEYDOWN:
                     continue
@@ -51,9 +64,9 @@ class GattiSearch:
                 if event.key == pg.K_BACKSPACE:
                     if len(self.part) == 0:
                         self.walk, _ = os.path.split(self.walk)
-                    elif event.mod == pg.KMOD_NONE:
+                    elif event.mod == OFFSET_CTRL:
                         self.part = self.part[:-1]
-                    elif event.mod == pg.KMOD_LCTRL:
+                    elif event.mod == OFFSET_CTRL + pg.KMOD_LCTRL:
                         self.part = ""
 
                 # roll through hints
@@ -96,7 +109,7 @@ class GattiSearch:
             pos_box = pos - np.array(font.size(text)) / 2
             srf = font.render(text, antialias=True, color=gc.TEXT)
             screen.blit(srf, pos_box)
-            
+
             # draw search box (completion hints)
             fade = 255 / 2
             for i, p in enumerate(self.hint[self.index:] + self.hint[:self.index]):
@@ -112,7 +125,7 @@ class GattiSearch:
                 screen.blit(srf, pos_box + pos_offset)
 
                 fade /= 2
-        
+
             pg.display.update()
 
 

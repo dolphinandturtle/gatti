@@ -1,5 +1,5 @@
 import numpy as np
-
+import json
 
 def load_program(prog, d):
     # load image data
@@ -50,3 +50,20 @@ def dump_program(prog):
             }
         } for i in range(prog.board.img_count)]
     }
+
+def recents_write(abspath_save):
+    recents = []
+    try:
+        with open("/home/gabri/.config/gatti/recents.json", "r") as f:
+            recents = json.load(f)
+            if abspath_save not in recents:
+                recents.insert(0, abspath_save)
+                if len(recents) > 5:
+                    recents.pop()
+            else:
+                recents.remove(abspath_save)
+                recents.insert(0, abspath_save)
+    except (FileNotFoundError, json.JSONDecodeError):
+        recents.append(abspath_save)
+    with open("/home/gabri/.config/gatti/recents.json", "w") as f:
+        json.dump(recents, f, indent = 4)

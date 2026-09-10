@@ -10,7 +10,7 @@ import gatti_params as gp
 import gatti_state as gs
 from gatti_program import GattiProgram
 from gatti_serialization import load_program
-from gatti_serialization import dump_program
+from gatti_serialization import dump_program, recents_write
 
 
 # protect script from getting imported
@@ -30,6 +30,9 @@ try:
     # supply the save specified in the argument as the one to be loaded
     if len(sys.argv) == 2:
         path_save = sys.argv[1]
+        abspath_save = os.path.abspath(path_save)
+        recents_write(abspath_save)
+
         with tarfile.open(path_save, "r:gz") as tar:
             data = json.load(tar.extractfile("board.json"))
             load_program(prog, data)
@@ -53,6 +56,10 @@ prog.run(screen, path, name)
 
 
 # saving the latest program state
+
+if prog.splash.use_recents:
+    path_save = prog.splash.recents[0]
+
 with tarfile.open(path_save, "w:gz") as tar:
 
     # dump program state
